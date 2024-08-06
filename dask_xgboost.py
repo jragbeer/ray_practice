@@ -22,17 +22,33 @@ if __name__ == '__main__':
     s = cudf.Series([1, 2, 3, None, 4])
     print(s)
 
-    cluster = LocalCUDACluster()
-    client = Client(cluster)
-
-    df = dd.read_parquet(data_path + "nyctaxi_hvfhv_2023_12.parquet")
+    # cluster = LocalCUDACluster()
+    # client = Client(cluster)
+    client = Client(n_workers=1, threads_per_worker=8)
+    list_of_dfs = []
+    for x in [f"nyctaxi_hvfhv_2023_{i:02}.parquet" for i in range(1, 13)]:
+        try:
+            print(x)
+            iidf = dd.read_parquet(data_path + x)
+            list_of_dfs.append(iidf)
+        except:
+            pass
+    for x in [f"nyctaxi_hvfhv_2022_{i:02}.parquet" for i in range(1, 13)]:
+        try:
+            print(x)
+            iidf = dd.read_parquet(data_path + x)
+            list_of_dfs.append(iidf)
+        except:
+            pass
+    df = dd.concat(list_of_dfs)
+    df.info(memory_usage = 'deep')
     df = df[["trip_miles" , "trip_time"]]
     # df = df.categorize(columns=df.select_dtypes(include="category").columns.tolist()) # Categorize
     print(df.head().to_string())
 
     df = df.persist()
     scores = []
-    for i, (train, test) in enumerate(make_cv_splits(5)):
+    for i, (train, test) in enumerate(make_cv_splits(10)):
         print(f"Split #{i + 1} / 5 ...")
         y_train = train["trip_time"]
         X_train = train.drop(columns=["trip_time"])
@@ -59,3 +75,4 @@ if __name__ == '__main__':
 
     scores = da.concatenate(scores).compute()
     print(f"MSE score = {scores.mean()} +/- {scores.std()}")
+    print(datetime.datetime.now()-today)
