@@ -35,20 +35,21 @@ dagster_logger.info(today)
 app_version_number = "0.1"
 dagster_logger.info(f"Version:  {app_version_number}")
 
-# compare_column = "pins_hit"
-context = ray.init(address='local',
+context = ray.init(
+    address='local',
                    log_to_driver=False,
                    )
 print(context)
 
 # Change this to match your cluster scale.
-high_score = 170
-NUM_SAMPLING_TASKS = 100
-NUM_SAMPLES_PER_TASK = 2500
-TOTAL_NUM_SAMPLES = NUM_SAMPLING_TASKS * NUM_SAMPLES_PER_TASK
 # parameters for the simulation
-num_games_to_simulate = TOTAL_NUM_SAMPLES
+high_score = 210
+loops = 10000
+NUM_SAMPLING_TASKS = 200
+NUM_SAMPLES_PER_TASK = 5
+num_games_to_simulate = NUM_SAMPLING_TASKS * NUM_SAMPLES_PER_TASK
 
+print("num_games_to_simulate per loop", num_games_to_simulate)
 compare_column = 'ball_score'  # ball_score or pins_hit
 
 # each pin for easier analysis, and it's # of points as the value
@@ -301,6 +302,7 @@ def ray_simulate_multiple_games(games_by_score: dict,
             except Exception as eee:
                 pass
     return games_database, games_by_score
+@ray.remote
 def sampling_task(num_samples: int, progress_actor: ray.actor.ActorHandle) -> tuple:
     flag = 0
     games_database_, games_by_score_ = ray.get(ray_simulate_multiple_games.remote(games_by_score=base_games_by_score,
@@ -311,28 +313,31 @@ def sampling_task(num_samples: int, progress_actor: ray.actor.ActorHandle) -> tu
     progress_actor.adder.remote(num_samples)
     best_game_id, number_strikes, a_game_with_a_strike = find_best_game(games_database_)
     high = games_database_[best_game_id]["running_score"].max()
-    print('aaa', high, ray.get(progress_actor.counterr.remote()),)
-    if high >= high_score:
-        print("OVER HIGH SCORE")
-        flag = 1
-    return games_database_, games_by_score_, flag
+    return games_database_, games_by_score_, high
 
 base_game_template = create_game_template()
 
 # Create the progress actor.
-progress_actor = ProgressActor.remote(TOTAL_NUM_SAMPLES)
+progress_actor = ProgressActor.remote(num_games_to_simulate)
 
 # Create and execute all sampling tasks in parallel.
-results = []
-for i in range(NUM_SAMPLING_TASKS):
-    gdb, gbs, flagg = sampling_task(NUM_SAMPLES_PER_TASK, progress_actor)
-    results.append((gdb, gbs, flagg))
-    if flagg > 0:
-        print('BROKEN')
+other = []
+flagg = 0
+highscore = 0
+for _ in range(loops):
+    if flagg:
         break
-    print('progress:', ray.get(progress_actor.counterr.remote()))
+    results = [sampling_task.remote(NUM_SAMPLES_PER_TASK, progress_actor) for i in range(NUM_SAMPLING_TASKS)]
+    for gdb, gbs, hgh in ray.get(results):
+        other.append((gdb, gbs, hgh))
+        if hgh > highscore:
+            highscore = hgh
+            if highscore > high_score:
+                print("OVER HIGH SCORE")
+                break
+    print(f'progress_outer: {ray.get(progress_actor.counterr.remote())} | high_score: {highscore}', )
 
 print('end: ', ray.get(progress_actor.counterr.remote()))
-print('max: ', TOTAL_NUM_SAMPLES)
+print('max: ', num_games_to_simulate)
 
-get_final_output(results, print_out=True)
+get_final_output(other, print_out=True)
