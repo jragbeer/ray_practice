@@ -1,8 +1,9 @@
-import ray
 from jragbeer_common import *
+import ray
+import cudf.pandas
+# cudf.pandas.install()
 
-
-# pandas settings for setingwarning
+# pandas settings for settingwarning
 pd.options.mode.chained_assignment = None  # default='warn'
 # pandas settings for terminal output
 pd.set_option("display.width", 500)
@@ -44,7 +45,7 @@ print(context)
 # Change this to match your cluster scale.
 # parameters for the simulation
 high_score = 210
-loops = 10000
+loops = 10_000
 NUM_SAMPLING_TASKS = 200
 NUM_SAMPLES_PER_TASK = 5
 num_games_to_simulate = NUM_SAMPLING_TASKS * NUM_SAMPLES_PER_TASK
@@ -335,7 +336,7 @@ for _ in range(loops):
             if highscore > high_score:
                 print("OVER HIGH SCORE")
                 break
-    print(f'progress_outer: {ray.get(progress_actor.counterr.remote())} | high_score: {highscore}', )
+    print(f'progress_outer: {ray.get(progress_actor.counterr.remote())} | high_score: {highscore} | time: {datetime.datetime.now()-today}', )
 
 print('end: ', ray.get(progress_actor.counterr.remote()))
 print('max: ', num_games_to_simulate)
